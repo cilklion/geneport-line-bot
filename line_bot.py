@@ -63,7 +63,7 @@ def get_user_data(user_id):
         "pose": "Editorial Pose",
         "style": "Kodak Portra 400",
         "casting": "Diverse Professional",
-        "credits": 3
+        "credits": 100
     }
     
     if db:
