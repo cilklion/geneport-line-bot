@@ -123,7 +123,7 @@ def process_ai_generation(user_id, input_path, user_data):
                 prompt=full_prompt,
                 n=4,
                 size="1024x1024",
-                quality="standard"  # Set to standard to reduce cost
+                quality="medium"  # Set to medium as per gpt-image-2 spec
             )
             
         logger.debug(f"OpenAI Response received with 4 images.")
