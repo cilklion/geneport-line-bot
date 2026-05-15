@@ -15,6 +15,7 @@ import requests
 import uuid
 import firebase_admin
 from firebase_admin import credentials, firestore
+from PIL import Image
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -149,6 +150,24 @@ def handle_image_message(event):
         for chunk in message_content.iter_content():
             f.write(chunk)
     
+    # Pre-process image for OpenAI: Convert to square PNG
+    try:
+        with Image.open(input_path) as img:
+            # Create a square background (transparent)
+            size = max(img.size)
+            square_img = Image.new('RGBA', (size, size), (255, 255, 255, 0))
+            # Paste original image onto square background
+            offset = ((size - img.width) // 2, (size - img.height) // 2)
+            square_img.paste(img, offset)
+            # Save as PNG
+            png_path = input_path.replace(".jpg", ".png")
+            square_img.save(png_path, "PNG")
+            input_path = png_path
+    except Exception as e:
+        logger.error(f"Image processing failed: {e}")
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="画像処理に失敗しました。"))
+        return
+
     # 1. Reply immediately to LINE to satisfy the 5-second rule
     line_bot_api.reply_message(
         event.reply_token,
