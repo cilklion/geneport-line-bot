@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import threading
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -65,7 +66,6 @@ def get_user_data(user_id):
         doc_ref = db.collection('users').document(user_id)
         doc = doc_ref.get()
         if doc.exists:
-            # Merge with defaults in case of new fields
             data = doc.to_dict()
             for key, val in default_data.items():
                 if key not in data:
@@ -90,31 +90,8 @@ def callback():
         abort(400)
     return 'OK'
 
-@handler.add(MessageEvent, message=ImageMessage)
-def handle_image_message(event):
-    user_id = event.source.user_id
-    user_data = get_user_data(user_id)
-    
-    if user_data.get("credits", 0) <= 0:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="無料枠の上限です。アップグレードしてください。"))
-        return
-
-    message_id = event.message.id
-    message_content = line_bot_api.get_message_content(message_id)
-    input_filename = f"{uuid.uuid4()}.jpg"
-    input_path = os.path.join(UPLOAD_FOLDER, input_filename)
-    
-    with open(input_path, 'wb') as f:
-        for chunk in message_content.iter_content():
-            f.write(chunk)
-    
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(
-            text=f"GENEPORTが生成を開始しました。\n【現在の設定】\nファッション: {user_data['fashion']}\nレンズ: {user_data['lens']}\n残りクレジット: {user_data['credits']}"
-        )
-    )
-
+def process_ai_generation(user_id, input_path, user_data):
+    """Heavy AI Task running in a background thread."""
     try:
         full_prompt = (
             "Persona: You are a legendary master of portrait photography.\n"
@@ -147,6 +124,36 @@ def handle_image_message(event):
     except Exception as e:
         logger.error(f"Generation error: {e}")
         line_bot_api.push_message(user_id, TextSendMessage(text=f"エラー: {str(e)}"))
+
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image_message(event):
+    user_id = event.source.user_id
+    user_data = get_user_data(user_id)
+    
+    if user_data.get("credits", 0) <= 0:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="無料枠の上限です。アップグレードしてください。"))
+        return
+
+    message_id = event.message.id
+    message_content = line_bot_api.get_message_content(message_id)
+    input_filename = f"{uuid.uuid4()}.jpg"
+    input_path = os.path.join(UPLOAD_FOLDER, input_filename)
+    
+    with open(input_path, 'wb') as f:
+        for chunk in message_content.iter_content():
+            f.write(chunk)
+    
+    # 1. Reply immediately to LINE to satisfy the 5-second rule
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(
+            text=f"GENEPORTが生成を開始しました。\n【現在の設定】\nファッション: {user_data['fashion']}\nレンズ: {user_data['lens']}\n残りクレジット: {user_data['credits']}"
+        )
+    )
+
+    # 2. Start heavy task in background thread
+    thread = threading.Thread(target=process_ai_generation, args=(user_id, input_path, user_data))
+    thread.start()
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
