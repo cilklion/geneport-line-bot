@@ -121,8 +121,9 @@ def process_ai_generation(user_id, input_path, user_data):
                 image=img_file,
                 mask=img_file,
                 prompt=full_prompt,
-                n=4,  # Request 4 variations
-                size="1024x1024"
+                n=4,
+                size="1024x1024",
+                quality="standard"  # Set to standard to reduce cost
             )
             
         logger.debug(f"OpenAI Response received with 4 images.")
