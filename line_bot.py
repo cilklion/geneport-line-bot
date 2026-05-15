@@ -119,32 +119,46 @@ def process_ai_generation(user_id, input_path, user_data):
             response = client.images.edit(
                 model="gpt-image-2",
                 image=img_file,
-                mask=img_file,  # Using the same image as mask tells it to edit the whole thing
+                mask=img_file,
                 prompt=full_prompt,
-                n=1,
+                n=4,  # Request 4 variations
                 size="1024x1024"
             )
             
-        logger.debug(f"OpenAI Response received.")
+        logger.debug(f"OpenAI Response received with 4 images.")
         
-        # Handle b64_json if URL is empty
-        generated_url = response.data[0].url
-        if not generated_url and response.data[0].b64_json:
-            logger.info("Handling b64_json response...")
-            output_filename = f"{uuid.uuid4()}.png"
-            output_path = os.path.join(OUTPUT_FOLDER, output_filename)
-            img_data = base64.b64decode(response.data[0].b64_json)
-            with open(output_path, 'wb') as f:
-                f.write(img_data)
+        # Download and composite 4 images into a 2x2 grid
+        output_filename = f"{uuid.uuid4()}.png"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        
+        # Create a blank canvas for 2x2 grid (2048x2048)
+        grid_img = Image.new('RGB', (2048, 2048))
+        
+        for i, img_obj in enumerate(response.data):
+            # Get image data (could be url or b64_json)
+            if img_obj.url:
+                img_resp = requests.get(img_obj.url)
+                img_data = img_resp.content
+            else:
+                img_data = base64.b64decode(img_obj.b64_json)
             
-            # Construct public URL using Railway domain
-            public_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "web-production-ab5d3.up.railway.app")
-            generated_url = f"https://{public_domain}/static/outputs/{output_filename}"
+            # Load into Pillow
+            from io import BytesIO
+            temp_img = Image.open(BytesIO(img_data)).resize((1024, 1024))
+            
+            # Paste into grid
+            x = (i % 2) * 1024
+            y = (i // 2) * 1024
+            grid_img.paste(temp_img, (x, y))
+            
+        # Save final grid image
+        grid_img.save(output_path, "PNG")
+        
+        # Construct public URL
+        public_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "web-production-ab5d3.up.railway.app")
+        generated_url = f"https://{public_domain}/static/outputs/{output_filename}"
 
-        if not generated_url:
-            raise ValueError("OpenAI returned neither URL nor b64_json.")
-
-        logger.info(f"Generated Image URL: {generated_url}")
+        logger.info(f"Generated Grid Image URL: {generated_url}")
         user_data["credits"] -= 1
         update_user_data(user_id, user_data)
         
