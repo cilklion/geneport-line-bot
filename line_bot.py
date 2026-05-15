@@ -112,7 +112,13 @@ def process_ai_generation(user_id, input_path, user_data):
                 prompt=full_prompt
             )
             
+        logger.debug(f"OpenAI Response: {response}")
         generated_url = response.data[0].url
+        
+        if not generated_url:
+            raise ValueError("OpenAI returned an empty image URL.")
+
+        logger.info(f"Generated Image URL: {generated_url}")
         user_data["credits"] -= 1
         update_user_data(user_id, user_data)
         
