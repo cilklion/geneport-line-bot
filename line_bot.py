@@ -13,6 +13,7 @@ import openai
 from dotenv import load_dotenv
 import requests
 import uuid
+import base64
 import firebase_admin
 from firebase_admin import credentials, firestore
 from PIL import Image
@@ -49,8 +50,10 @@ handler = WebhookHandler(line_secret)
 client = openai.OpenAI(api_key=api_key)
 
 UPLOAD_FOLDER = 'static/uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+OUTPUT_FOLDER = 'static/outputs'
+for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER]:
+    if not os.path.exists(folder):
+        os.makedirs(folder)
 
 def get_user_data(user_id):
     default_data = {
@@ -113,11 +116,24 @@ def process_ai_generation(user_id, input_path, user_data):
             size="1024x1024"
         )
             
-        logger.debug(f"OpenAI Response: {response}")
-        generated_url = response.data[0].url
+        logger.debug(f"OpenAI Response received.")
         
+        # Handle b64_json if URL is empty
+        generated_url = response.data[0].url
+        if not generated_url and response.data[0].b64_json:
+            logger.info("Handling b64_json response...")
+            output_filename = f"{uuid.uuid4()}.png"
+            output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+            img_data = base64.b64decode(response.data[0].b64_json)
+            with open(output_path, 'wb') as f:
+                f.write(img_data)
+            
+            # Construct public URL using Railway domain
+            public_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "web-production-ab5d3.up.railway.app")
+            generated_url = f"https://{public_domain}/static/outputs/{output_filename}"
+
         if not generated_url:
-            raise ValueError("OpenAI returned an empty image URL.")
+            raise ValueError("OpenAI returned neither URL nor b64_json.")
 
         logger.info(f"Generated Image URL: {generated_url}")
         user_data["credits"] -= 1
