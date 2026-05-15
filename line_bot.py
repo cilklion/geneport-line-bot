@@ -24,7 +24,7 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 line_secret = os.getenv("LINE_CHANNEL_SECRET")
 line_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-firebase_config = os.getenv("FIREBASE_CONFIG") # JSON string of service account
+firebase_config = os.getenv("FIREBASE_CONFIG")
 
 # Initialize Firebase
 if firebase_config:
@@ -38,7 +38,6 @@ if firebase_config:
         logger.error(f"Firebase initialization failed: {e}")
         db = None
 else:
-    logger.warning("FIREBASE_CONFIG not found. Running without persistence.")
     db = None
 
 app = Flask(__name__)
@@ -56,15 +55,22 @@ def get_user_data(user_id):
         "fashion": "High Fashion",
         "lens": "50mm Standard",
         "lighting": "Natural",
-        "action": "Editorial Pose",
-        "credits": 3 # Initial free credits
+        "pose": "Editorial Pose",
+        "style": "Kodak Portra 400",
+        "casting": "Diverse Professional",
+        "credits": 3
     }
     
     if db:
         doc_ref = db.collection('users').document(user_id)
         doc = doc_ref.get()
         if doc.exists:
-            return doc.to_dict()
+            # Merge with defaults in case of new fields
+            data = doc.to_dict()
+            for key, val in default_data.items():
+                if key not in data:
+                    data[key] = val
+            return data
         else:
             doc_ref.set(default_data)
             return default_data
@@ -89,12 +95,8 @@ def handle_image_message(event):
     user_id = event.source.user_id
     user_data = get_user_data(user_id)
     
-    # Credit check
     if user_data.get("credits", 0) <= 0:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="無料枠の上限に達しました。継続して利用するにはプランのアップグレードが必要です。")
-        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="無料枠の上限です。アップグレードしてください。"))
         return
 
     message_id = event.message.id
@@ -109,11 +111,7 @@ def handle_image_message(event):
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(
-            text=f"GENEPORTが生成を開始しました。\n現在の残りクレジット: {user_data['credits']}",
-            quick_reply=QuickReply(items=[
-                QuickReplyButton(action=MessageAction(label="ファッション変更", text="ファッション設定")),
-                QuickReplyButton(action=MessageAction(label="レンズ変更", text="レンズ設定")),
-            ])
+            text=f"GENEPORTが生成を開始しました。\n【現在の設定】\nファッション: {user_data['fashion']}\nレンズ: {user_data['lens']}\n残りクレジット: {user_data['credits']}"
         )
     )
 
@@ -121,12 +119,12 @@ def handle_image_message(event):
         full_prompt = (
             "Persona: You are a legendary master of portrait photography.\n"
             f"Artistic Mandate:\n"
-            f"- Model Casting: Diverse professional model\n"
+            f"- Model Casting: {user_data['casting']}\n"
             f"- Fashion Style: {user_data['fashion']}\n"
-            f"- Action/Pose: {user_data['action']}\n"
+            f"- Action/Pose: {user_data['pose']}\n"
             f"- Lighting Style: {user_data['lighting']}\n"
             f"- Optical Specs: Shot with a {user_data['lens']} lens.\n"
-            "Technical Style: Shot on Kodak Portra 400, Leica glass.\n"
+            f"Technical Style: Shot on {user_data['style']}, Leica glass.\n"
             "Requirements: Match lighting and shadows perfectly."
         )
 
@@ -138,17 +136,12 @@ def handle_image_message(event):
             )
             
         generated_url = response.data[0].url
-        
-        # Deduct credit
         user_data["credits"] -= 1
         update_user_data(user_id, user_data)
         
         line_bot_api.push_message(
             user_id,
-            ImageSendMessage(
-                original_content_url=generated_url,
-                preview_image_url=generated_url
-            )
+            ImageSendMessage(original_content_url=generated_url, preview_image_url=generated_url)
         )
         
     except Exception as e:
@@ -161,67 +154,76 @@ def handle_text_message(event):
     text = event.message.text
     user_data = get_user_data(user_id)
     
+    # Menus
     if text in ["ファッション", "ファッション設定"]:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text="ファッションスタイルを選択:",
-                quick_reply=QuickReply(items=[
-                    QuickReplyButton(action=MessageAction(label="High Fashion", text="SET_FASHION:High Fashion")),
-                    QuickReplyButton(action=MessageAction(label="Streetwear", text="SET_FASHION:Streetwear")),
-                    QuickReplyButton(action=MessageAction(label="Suit", text="SET_FASHION:Suit")),
-                ])
-            )
-        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="ファッションスタイルを選択:",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=MessageAction(label="High Fashion", text="SET_FASHION:High Fashion")),
+                QuickReplyButton(action=MessageAction(label="Streetwear", text="SET_FASHION:Streetwear")),
+                QuickReplyButton(action=MessageAction(label="Suit", text="SET_FASHION:Suit")),
+                QuickReplyButton(action=MessageAction(label="Activewear", text="SET_FASHION:Activewear")),
+            ])
+        ))
     elif text in ["レンズ", "レンズ設定"]:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text="レンズを選択:",
-                quick_reply=QuickReply(items=[
-                    QuickReplyButton(action=MessageAction(label="35mm Wide", text="SET_LENS:35mm Wide")),
-                    QuickReplyButton(action=MessageAction(label="50mm Standard", text="SET_LENS:50mm Standard")),
-                    QuickReplyButton(action=MessageAction(label="85mm Portrait", text="SET_LENS:85mm Portrait")),
-                ])
-            )
-        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="レンズを選択:",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=MessageAction(label="35mm Wide", text="SET_LENS:35mm Wide")),
+                QuickReplyButton(action=MessageAction(label="50mm Standard", text="SET_LENS:50mm Standard")),
+                QuickReplyButton(action=MessageAction(label="85mm Portrait", text="SET_LENS:85mm Portrait")),
+            ])
+        ))
     elif text in ["ライティング", "ライティング設定"]:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text="ライティングを選択:",
-                quick_reply=QuickReply(items=[
-                    QuickReplyButton(action=MessageAction(label="Natural", text="SET_LIGHT:Natural")),
-                    QuickReplyButton(action=MessageAction(label="Studio", text="SET_LIGHT:Studio")),
-                    QuickReplyButton(action=MessageAction(label="Cinematic", text="SET_LIGHT:Cinematic")),
-                ])
-            )
-        )
-    elif text in ["ステータス", "マイステータス"]:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=f"【現在のステータス】\n残りクレジット: {user_data['credits']}\nファッション: {user_data['fashion']}\nレンズ: {user_data['lens']}\nライティング: {user_data['lighting']}")
-        )
-    elif text.startswith("SET_LIGHT:"):
-        new_val = text.split(":")[1]
-        user_data["lighting"] = new_val
-        update_user_data(user_id, user_data)
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ライティングを {new_val} に保存しました。"))
-    elif text.startswith("SET_FASHION:"):
-        new_val = text.split(":")[1]
-        user_data["fashion"] = new_val
-        update_user_data(user_id, user_data)
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ファッションを {new_val} に保存しました。"))
-    elif text.startswith("SET_LENS:"):
-        new_val = text.split(":")[1]
-        user_data["lens"] = new_val
-        update_user_data(user_id, user_data)
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"レンズを {new_val} に保存しました。"))
-    else:
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=f"GENEPORTへようこそ！写真を送ると人物を合成します。\n現在の残りクレジット: {user_data['credits']}")
-        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="ライティングを選択:",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=MessageAction(label="Natural", text="SET_LIGHT:Natural")),
+                QuickReplyButton(action=MessageAction(label="Cinematic", text="SET_LIGHT:Cinematic")),
+                QuickReplyButton(action=MessageAction(label="Golden Hour", text="SET_LIGHT:Golden Hour")),
+                QuickReplyButton(action=MessageAction(label="Neon Night", text="SET_LIGHT:Neon Night")),
+            ])
+        ))
+    elif text in ["ポーズ", "ポーズ設定"]:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="ポーズを選択:",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=MessageAction(label="Editorial", text="SET_POSE:Editorial Pose")),
+                QuickReplyButton(action=MessageAction(label="Walking", text="SET_POSE:Walking")),
+                QuickReplyButton(action=MessageAction(label="Seated", text="SET_POSE:Seated")),
+                QuickReplyButton(action=MessageAction(label="Dynamic", text="SET_POSE:Dynamic")),
+            ])
+        ))
+    elif text in ["スタイル", "質感設定"]:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="写真の質感を選択:",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=MessageAction(label="Kodak 400", text="SET_STYLE:Kodak Portra 400")),
+                QuickReplyButton(action=MessageAction(label="Fuji Color", text="SET_STYLE:Fuji Superia")),
+                QuickReplyButton(action=MessageAction(label="Monochrome", text="SET_STYLE:Black and White")),
+                QuickReplyButton(action=MessageAction(label="Polaroid", text="SET_STYLE:Polaroid")),
+            ])
+        ))
+    elif text in ["ステータス", "マイページ"]:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text=(f"【GENEPORT ステータス】\n残りクレジット: {user_data['credits']}\n"
+                  f"ファッション: {user_data['fashion']}\nレンズ: {user_data['lens']}\n"
+                  f"ライティング: {user_data['lighting']}\nポーズ: {user_data['pose']}\n"
+                  f"質感: {user_data['style']}")
+        ))
+    
+    # Setters
+    elif text.startswith("SET_"):
+        key_map = {
+            "FASHION": "fashion", "LENS": "lens", "LIGHT": "lighting",
+            "POSE": "pose", "STYLE": "style", "MODEL": "casting"
+        }
+        prefix, val = text.split(":", 1)
+        key = key_map.get(prefix.replace("SET_", ""))
+        if key:
+            user_data[key] = val
+            update_user_data(user_id, user_data)
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"{key} を {val} に設定しました。"))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
