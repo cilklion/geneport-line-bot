@@ -1,1 +1,1 @@
-web: gunicorn line_bot:app
+web: gunicorn --timeout 120 line_bot:app

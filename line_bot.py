@@ -185,6 +185,28 @@ def handle_text_message(event):
                 ])
             )
         )
+    elif text == "ライティング設定":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="ライティングを選択:",
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=MessageAction(label="Natural", text="SET_LIGHT:Natural")),
+                    QuickReplyButton(action=MessageAction(label="Studio", text="SET_LIGHT:Studio")),
+                    QuickReplyButton(action=MessageAction(label="Cinematic", text="SET_LIGHT:Cinematic")),
+                ])
+            )
+        )
+    elif text == "マイステータス":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=f"【現在のステータス】\n残りクレジット: {user_data['credits']}\nファッション: {user_data['fashion']}\nレンズ: {user_data['lens']}\nライティング: {user_data['lighting']}")
+        )
+    elif text.startswith("SET_LIGHT:"):
+        new_val = text.split(":")[1]
+        user_data["lighting"] = new_val
+        update_user_data(user_id, user_data)
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"ライティングを {new_val} に保存しました。"))
     elif text.startswith("SET_FASHION:"):
         new_val = text.split(":")[1]
         user_data["fashion"] = new_val
