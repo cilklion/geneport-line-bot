@@ -161,7 +161,7 @@ def handle_text_message(event):
     text = event.message.text
     user_data = get_user_data(user_id)
     
-    if text == "ファッション設定":
+    if text in ["ファッション", "ファッション設定"]:
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
@@ -173,7 +173,7 @@ def handle_text_message(event):
                 ])
             )
         )
-    elif text == "レンズ設定":
+    elif text in ["レンズ", "レンズ設定"]:
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
@@ -185,7 +185,7 @@ def handle_text_message(event):
                 ])
             )
         )
-    elif text == "ライティング設定":
+    elif text in ["ライティング", "ライティング設定"]:
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
@@ -197,7 +197,7 @@ def handle_text_message(event):
                 ])
             )
         )
-    elif text == "マイステータス":
+    elif text in ["ステータス", "マイステータス"]:
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=f"【現在のステータス】\n残りクレジット: {user_data['credits']}\nファッション: {user_data['fashion']}\nレンズ: {user_data['lens']}\nライティング: {user_data['lighting']}")
