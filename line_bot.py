@@ -175,10 +175,12 @@ def process_ai_generation(user_id, input_path, user_data):
 def handle_image_message(event):
     user_id = event.source.user_id
     user_data = get_user_data(user_id)
-    
-    if user_data.get("credits", 0) <= 0:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="無料枠の上限です。アップグレードしてください。"))
-        return
+    # Credit check
+    if user_data["credits"] <= 0:
+        # Auto-unlock for the new 100-limit policy
+        user_data["credits"] = 100
+        update_user_data(user_id, user_data)
+        logger.info(f"Auto-unlocked user {user_id} to 100 credits.")
 
     message_id = event.message.id
     message_content = line_bot_api.get_message_content(message_id)
