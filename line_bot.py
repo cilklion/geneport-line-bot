@@ -109,12 +109,21 @@ def process_ai_generation(user_id, input_path, user_data):
             "Requirements: Match lighting and shadows perfectly."
         )
 
-        response = client.images.generate(
-            model="gpt-image-2",
-            prompt=full_prompt,
-            n=1,
-            size="1024x1024"
-        )
+        with Image.open(input_path) as img:
+            # Ensure image is RGBA
+            img = img.convert("RGBA")
+            # Save as temporary PNGs for OpenAI
+            img.save(input_path, "PNG")
+            
+        with open(input_path, "rb") as img_file:
+            response = client.images.edit(
+                model="gpt-image-2",
+                image=img_file,
+                mask=img_file,  # Using the same image as mask tells it to edit the whole thing
+                prompt=full_prompt,
+                n=1,
+                size="1024x1024"
+            )
             
         logger.debug(f"OpenAI Response received.")
         
